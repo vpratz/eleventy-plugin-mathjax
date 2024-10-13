@@ -59,6 +59,9 @@ module.exports = function (eleventyConfig, options = {}) {
 
     cleanOutput(html, adaptor, options);
 
+    // add stylesheet to output document to visually hide assistive MathML
+    adaptor.append(html.document.head, OutputJax.styleSheet(html));
+
     return (
       adaptor.doctype(html.document) + "\n" + adaptor.outerHTML(adaptor.root(html.document)) + "\n"
     );
