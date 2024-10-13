@@ -13,7 +13,7 @@ require("mathjax-full/js/util/entities/all.js");
 const defaultOptions = {
   output: "svg",
   tex: {
-    packages: AllPackages,
+    packages: AllPackages.filter((name) => name !== 'bussproofs'),
     inlineMath: [
       ["$", "$"],
       ["\\(", "\\)"],
@@ -42,25 +42,53 @@ module.exports = function (eleventyConfig, options = {}) {
     liteAdaptor: { ...defaultOptions.liteAdaptor, ...options.liteAdaptor },
   };
 
-  const InputJax = new TeX(options.tex);
-
-  const OutputJax = createOutputJax(options);
-
   const adaptor = liteAdaptor(options.liteAdaptor);
-  AssistiveMmlHandler(RegisterHTMLHandler(adaptor));
+  var OutputJax;
+  if (options.output == "mathml") {
+    // adapted from https://github.com/mathjax/MathJax-demos-node/blob/d9ba8c61e54683efc04d0e11d5812bc974da65db/direct/tex2mml-page
+    // There is no output jax for MathML, filter out bussproofs as it requires one
+    options.tex.packages = options.tex.packages.filter((name) => name !== 'bussproofs');
+    // MathML does not need an additional AssistiveMmlHandler, as MathML has screen reader support
+    RegisterHTMLHandler(adaptor);
+  } else {
+    OutputJax = createOutputJax(options);
+    AssistiveMmlHandler(RegisterHTMLHandler(adaptor));
+  }
+
+  const InputJax = new TeX(options.tex);
 
   eleventyConfig.addTransform("mathjax", function (content, outputPath) {
     if (!(outputPath && outputPath.endsWith(".html"))) {
       return content;
     }
+    var html;
+    if (options.output == "mathml") {
+      const { SerializedMmlVisitor } = require('mathjax-full/js/core/MmlTree/SerializedMmlVisitor.js');
+      const visitor = new SerializedMmlVisitor();
+      const toMathML = (node => visitor.visitTree(node, html));
 
-    const html = mathjax.document(content, { InputJax, OutputJax });
-    html.render();
+      function actionMML(math, doc) {
+        const adaptor = doc.adaptor;
+        const mml = toMathML(math.root);
+        math.typesetRoot = adaptor.firstChild(adaptor.body(adaptor.parse(mml, 'text/html')));
+      }
 
-    cleanOutput(html, adaptor, options);
+      html = mathjax.document(content, {
+        renderActions: {
+          typeset: [150, (doc) => { for (const math of doc.math) actionMML(math, doc) }, actionMML]
+        },
+        InputJax: InputJax,
+      });
+      html.render();
+    } else {
+      html = mathjax.document(content, { InputJax, OutputJax });
+      html.render();
 
-    // add stylesheet to output document to visually hide assistive MathML
-    adaptor.append(html.document.head, OutputJax.styleSheet(html));
+      // add stylesheet to output document to visually hide assistive MathML
+      adaptor.append(html.document.head, OutputJax.styleSheet(html));
+
+      cleanOutput(html, adaptor, options);
+    }
 
     return (
       adaptor.doctype(html.document) + "\n" + adaptor.outerHTML(adaptor.root(html.document)) + "\n"
