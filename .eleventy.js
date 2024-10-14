@@ -89,6 +89,10 @@ module.exports = function (eleventyConfig, options = {}) {
 
       cleanOutput(html, adaptor, options);
     }
+    // if #MathJax-script is present, do not transform
+    if (adaptor.elementById(adaptor.root(html.document), "MathJax-script") !== null) {
+      return content;
+    }
 
     return (
       adaptor.doctype(html.document) + "\n" + adaptor.outerHTML(adaptor.root(html.document)) + "\n"
